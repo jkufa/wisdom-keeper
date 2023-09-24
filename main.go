@@ -1,7 +1,9 @@
 package main
 
 import (
+	"fmt"
 	"log"
+	"time"
 
 	"os"
 
@@ -10,8 +12,14 @@ import (
 	"github.com/bwmarrin/discordgo"
 )
 
+// Testing
 const MOD_CHANNEL_ID = "1155592884138025101"
 const LOG_CHANNEL_ID = "1155596136602677300"
+
+// const MOD_CHANNEL_ID = "1152047706542460990"
+// const LOG_CHANNEL_ID = "1155598106021351454"
+
+const TIME_BETWEEN_MESSAGES = 6 * time.Hour
 
 func main() {
 
@@ -72,8 +80,11 @@ func messageCreate(s *discordgo.Session, m *discordgo.MessageCreate) {
 			return
 		}
 
+		// 6 hours - the time the previous message was posted
+		timeLeft := TIME_BETWEEN_MESSAGES - timeDiff
+
 		// Ping user and warn them for posting too soon
-		_, err = s.ChannelMessageSend(LOG_CHANNEL_ID, m.Author.Mention()+" posted too soon after their last message")
+		_, err = s.ChannelMessageSend(LOG_CHANNEL_ID, m.Author.Mention()+" the keeper rejects your proverb. You must wait "+formatDuration(timeLeft)+" hours before posting again.")
 		if err != nil {
 			log.Printf("Error sending message: %s\n", err)
 			return
@@ -101,10 +112,18 @@ func getPreviousUserMessage(s *discordgo.Session, channelID string, userID strin
 	return nil
 }
 
-func deleteMessage(s *discordgo.Session, channelID string, messageID string) {
-	err := s.ChannelMessageDelete(channelID, messageID)
-	if err != nil {
-		log.Printf("Error deleting message: %s\n", err)
-		return
+// given a time.Duration, return a a readable string representation of the time to the most significant unit
+func formatDuration(d time.Duration) string {
+	hours := d.Hours()
+	minutes := d.Minutes()
+	seconds := d.Seconds()
+
+	// round to 1 decimal place
+	if hours >= 1 {
+		return fmt.Sprintf("%.1f hours", hours)
 	}
+	if minutes >= 1 {
+		return fmt.Sprintf("%.1f minutes", minutes)
+	}
+	return fmt.Sprintf("%.1f seconds", seconds)
 }

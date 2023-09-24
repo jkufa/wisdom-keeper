@@ -3,6 +3,7 @@ package main
 import (
 	"fmt"
 	"log"
+	"net/http"
 
 	"os"
 
@@ -15,8 +16,8 @@ import (
 // const MOD_CHANNEL_ID = "1155592884138025101"
 // const LOG_CHANNEL_ID = "1155596136602677300"
 
-const MOD_CHANNEL_ID = "1152047706542460990"
 const LOG_CHANNEL_ID = "1155598106021351454"
+const MOD_CHANNEL_ID = "1152047706542460990" // prod
 
 const HOURS_BETWEEN_MESSAGES = 6
 
@@ -27,6 +28,20 @@ func main() {
 		log.Fatal("Error loading .env file")
 	}
 	token := os.Getenv("AUTH_TOKEN")
+	env := os.Getenv("ENV")
+
+	if env == "production" {
+		// Need to spin up a web server for Google Cloud Run to use for health checks
+		http.HandleFunc("/health", func(w http.ResponseWriter, r *http.Request) {
+			w.WriteHeader(http.StatusOK)
+		})
+
+		go func() {
+			if err := http.ListenAndServe(":8080", nil); err != nil {
+				log.Fatal(err)
+			}
+		}()
+	}
 
 	session, err := discordgo.New("Bot " + token)
 	if err != nil {
@@ -69,7 +84,7 @@ func messageCreate(s *discordgo.Session, m *discordgo.MessageCreate) {
 
 	timeDiff := m.Timestamp.Sub(lastMsg.Timestamp)
 
-	// if the time difference is less than 6 hours, in seconds
+	// if the time difference is less than hours constant, in seconds
 	if (timeDiff).Seconds() < HOURS_BETWEEN_MESSAGES*60*60 {
 		log.Printf("Message from %s is %f hours old\n", m.Author.Username, timeDiff.Hours())
 
@@ -112,7 +127,7 @@ func getPreviousUserMessage(s *discordgo.Session, channelID string, userID strin
 	return nil
 }
 
-// given a duration in seconds, return a string formatted as hours, minutes, or seconds
+// given an duration in seconds, returns a string formatted as "x hours", "x minutes", or "x seconds"
 func formatDuration(d float64) string {
 	hours := d / 60 / 60
 	minutes := d / 60

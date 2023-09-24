@@ -3,7 +3,6 @@ package main
 import (
 	"fmt"
 	"log"
-	"time"
 
 	"os"
 
@@ -13,13 +12,13 @@ import (
 )
 
 // Testing
-const MOD_CHANNEL_ID = "1155592884138025101"
-const LOG_CHANNEL_ID = "1155596136602677300"
+// const MOD_CHANNEL_ID = "1155592884138025101"
+// const LOG_CHANNEL_ID = "1155596136602677300"
 
-// const MOD_CHANNEL_ID = "1152047706542460990"
-// const LOG_CHANNEL_ID = "1155598106021351454"
+const MOD_CHANNEL_ID = "1152047706542460990"
+const LOG_CHANNEL_ID = "1155598106021351454"
 
-const TIME_BETWEEN_MESSAGES = 6 * time.Hour
+const HOURS_BETWEEN_MESSAGES = 6
 
 func main() {
 
@@ -70,7 +69,8 @@ func messageCreate(s *discordgo.Session, m *discordgo.MessageCreate) {
 
 	timeDiff := m.Timestamp.Sub(lastMsg.Timestamp)
 
-	if (timeDiff).Hours() < 6 {
+	// if the time difference is less than 6 hours, in seconds
+	if (timeDiff).Seconds() < HOURS_BETWEEN_MESSAGES*60*60 {
 		log.Printf("Message from %s is %f hours old\n", m.Author.Username, timeDiff.Hours())
 
 		// Delete the message
@@ -80,11 +80,11 @@ func messageCreate(s *discordgo.Session, m *discordgo.MessageCreate) {
 			return
 		}
 
-		// 6 hours - the time the previous message was posted
-		timeLeft := TIME_BETWEEN_MESSAGES - timeDiff
+		// calculate time left until user can post again in seconds
+		timeLeft := HOURS_BETWEEN_MESSAGES*60*60 - timeDiff.Seconds()
 
 		// Ping user and warn them for posting too soon
-		_, err = s.ChannelMessageSend(LOG_CHANNEL_ID, m.Author.Mention()+" the keeper rejects your proverb. You must wait "+formatDuration(timeLeft)+" hours before posting again.")
+		_, err = s.ChannelMessageSend(LOG_CHANNEL_ID, m.Author.Mention()+" The Keeper rejects your proverb. You must wait "+formatDuration(timeLeft)+" before posting again.")
 		if err != nil {
 			log.Printf("Error sending message: %s\n", err)
 			return
@@ -112,18 +112,17 @@ func getPreviousUserMessage(s *discordgo.Session, channelID string, userID strin
 	return nil
 }
 
-// given a time.Duration, return a a readable string representation of the time to the most significant unit
-func formatDuration(d time.Duration) string {
-	hours := d.Hours()
-	minutes := d.Minutes()
-	seconds := d.Seconds()
+// given a duration in seconds, return a string formatted as hours, minutes, or seconds
+func formatDuration(d float64) string {
+	hours := d / 60 / 60
+	minutes := d / 60
+	seconds := d
 
-	// round to 1 decimal place
 	if hours >= 1 {
 		return fmt.Sprintf("%.1f hours", hours)
 	}
 	if minutes >= 1 {
-		return fmt.Sprintf("%.1f minutes", minutes)
+		return fmt.Sprintf("%.f minutes", minutes)
 	}
-	return fmt.Sprintf("%.1f seconds", seconds)
+	return fmt.Sprintf("%.f seconds", seconds)
 }

@@ -9,8 +9,10 @@ import (
 	"github.com/bwmarrin/discordgo"
 )
 
+var config *Config
+
 func main() {
-	config := GetConfig()
+	config = GetConfig()
 
 	if config.Environment == "production" {
 		// Need to spin up a web server for Google Cloud Run to use for health checks
@@ -37,18 +39,15 @@ func main() {
 	}
 
 	// Listen for messages in channel
-	session.AddHandler(messageCreate)
+	session.AddHandler(onMessageCreate)
 
-	log.Printf("Bot is running as %s\n.", session.State.User.Username)
+	log.Printf("Bot running as %s\n", session.State.User.Username)
 	<-make(chan struct{})
 	session.Close()
 	return
 }
 
-// Runs on every message created in the discord server
-func messageCreate(s *discordgo.Session, m *discordgo.MessageCreate, config *Config) {
-	log.Printf("Message received")
-
+func onMessageCreate(s *discordgo.Session, m *discordgo.MessageCreate) {
 	// Ignore all messages created by the bot itself and messages not in MOD_CHANNEL
 	if (m.Author == s.State.User) || (m.ChannelID != config.ModChannelId) {
 		return
@@ -57,19 +56,18 @@ func messageCreate(s *discordgo.Session, m *discordgo.MessageCreate, config *Con
 	// Check for the last message in the channel from this user
 	lastMsg := getPreviousUserMessage(s, m.ChannelID, m.Author.ID)
 	if lastMsg == nil {
-		log.Printf("No previous message found for %s\n", m.Author.Username)
 		return
 	}
-	log.Printf("Last message time: %s\n", lastMsg.Timestamp)
+	log.Printf("Last message time for user %s: %s\n", m.Author.Username, lastMsg.Timestamp)
 
 	// Check if the last message was within the cooldown period
 	timeDiff := m.Timestamp.Sub(lastMsg.Timestamp)
 	timeLeft := getTimeLeft(timeDiff, config.CoolDownHours)
-	log.Printf("Message from %s is %f hours old\n", m.Author.Username, timeDiff.Hours())
 	if timeLeft == 0 {
 		log.Printf("No cooldown for %s\n", m.Author.Username)
 		return
 	}
+	log.Printf("Cooldown for %s: %s\n. Deleting message", m.Author.Username, formatDuration(timeLeft))
 
 	// Delete the message
 	err := s.ChannelMessageDelete(m.ChannelID, m.ID)
@@ -77,7 +75,6 @@ func messageCreate(s *discordgo.Session, m *discordgo.MessageCreate, config *Con
 		log.Printf("Error deleting message: %s\n", err)
 		return
 	}
-	log.Printf("Deleted message from %s\n", m.Author.Username)
 
 	// Ping the user in logs channel
 	_, err = s.ChannelMessageSend(config.LogChannelId, m.Author.Mention()+" The Keeper rejects your proverb. You must wait "+formatDuration(timeLeft)+" before posting again.")
@@ -85,7 +82,7 @@ func messageCreate(s *discordgo.Session, m *discordgo.MessageCreate, config *Con
 		log.Printf("Error sending message: %s\n", err)
 		return
 	}
-	log.Printf("Sent message to %s\n", config.LogChannelId)
+	log.Printf("Pinged user in channel %s\n", config.LogChannelId)
 }
 
 func getPreviousUserMessage(s *discordgo.Session, channelID string, userID string) *discordgo.Message {
@@ -122,12 +119,13 @@ func formatDuration(d float64) string {
 	minutes := d / 60
 	seconds := d
 
-	// round to 1 decimal place if hours is a float
 	if hours >= 1 {
-		if hours*10.0 == float64(int(hours*10.0)) {
+		str := fmt.Sprintf("%.1f", hours)
+		// Hacky way to remove decimal if it's 0
+		if str[len(str)-1] == '0' {
 			return fmt.Sprintf("%.0f hours", hours)
 		}
-		return fmt.Sprintf("%.1f hours", hours)
+		return str + " hours"
 	}
 	if minutes >= 1 {
 		return fmt.Sprintf("%.0f minutes", minutes)
